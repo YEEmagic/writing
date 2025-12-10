@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Contenteditable 차이점 체험</title>
+    <style>
+        body { padding: 20px; font-family: sans-serif; }
+        h2 { margin-bottom: 10px; }
+        
+        /* 에디터 영역 스타일 */
+        #editor {
+            border: 2px solid #333;
+            padding: 20px;
+            min-height: 150px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            outline: none;
+        }
+
+        /* 결과 확인 영역 스타일 */
+        #output {
+            background-color: #f4f4f4;
+            padding: 15px;
+            border: 1px solid #ccc;
+            white-space: pre-wrap; /* 줄바꿈 유지 */
+            font-family: monospace; /* 코드 폰트 */
+            color: #d63384; /* 강조 색상 */
+        }
+        
+        .guide { background: #eef; padding: 10px; margin-bottom: 20px; border-radius: 5px;}
+    </style>
+</head>
+<body>
+
+    <div class="guide">
+        <strong>실험 방법:</strong><br>
+        1. 아래 박스에 글을 쓰고 엔터를 쳐보세요.<br>
+        2. 글자를 드래그해서 <b>Ctrl+B (Bold)</b>, <i>Ctrl+I (Italic)</i>를 눌러보세요.<br>
+        3. 내용을 지웠다가 다시 써보세요.
+    </div>
+
+    <h2>1. 여기서 타이핑 하세요 (Contenteditable)</h2>
+    <div id="editor" contenteditable="true"></div>
+
+    <h2>2. 실제 생성된 HTML (실시간 관찰)</h2>
+    <div id="output">여기에 HTML 태그가 표시됩니다...</div>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const output = document.getElementById('output');
+
+        // 타이핑할 때마다 HTML을 아래에 보여줌
+        editor.addEventListener('input', () => {
+            output.textContent = editor.innerHTML;
+        });
+    </script>
+</body>
+</html>
