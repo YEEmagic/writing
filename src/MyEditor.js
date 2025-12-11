@@ -7,9 +7,12 @@ import FontFamily from '@tiptap/extension-font-family';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import TextAlign from '@tiptap/extension-text-align';
-import Image from '@tiptap/extension-image'; // [필수] 이미지 확장 기능 import
+import Image from '@tiptap/extension-image'; 
 
-// Firebase 관련 (Storage는 필요 없음)
+// [추가됨] 슬래시 커맨드 모듈 import
+import { SlashCommand, suggestionOptions } from './slashCommand';
+
+// Firebase 관련
 import { db } from './firebase'; 
 import { collection, addDoc, updateDoc, getDocs, doc, query, orderBy } from "firebase/firestore";
 
@@ -46,7 +49,6 @@ const MenuBar = ({ editor }) => {
 
     return (
         <div className="menu-bar" style={{ marginBottom: '10px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
-            {/* 폰트 패밀리 */}
             <select
                 onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
                 value={editor.getAttributes('textStyle').fontFamily || ''}
@@ -58,7 +60,6 @@ const MenuBar = ({ editor }) => {
                 ))}
             </select>
 
-            {/* 글자색 */}
             <select
                 onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
                 value={editor.getAttributes('textStyle').color || ''}
@@ -70,7 +71,6 @@ const MenuBar = ({ editor }) => {
                 ))}
             </select>
 
-            {/* 배경색 */}
             <select
                 onChange={(e) => editor.chain().focus().toggleHighlight({ color: e.target.value }).run()}
                 value={editor.isActive('highlight') ? editor.getAttributes('highlight').color || '' : ''}
@@ -95,7 +95,6 @@ const MenuBar = ({ editor }) => {
             <button onClick={() => editor.chain().focus().setTextAlign('center').run()} style={editor.isActive({ textAlign: 'center' }) ? activeButtonStyle : buttonStyle}>Center</button>
             <button onClick={() => editor.chain().focus().setTextAlign('right').run()} style={editor.isActive({ textAlign: 'right' }) ? activeButtonStyle : buttonStyle}>Right</button>
             
-            {/* 이미지 URL 수동 추가 버튼 (보조용) */}
             <button 
                 onClick={() => {
                     const url = window.prompt('이미지 주소(URL)를 입력하세요');
@@ -115,14 +114,12 @@ const TiptapEditor = () => {
     const [documents, setDocuments] = useState([]);
     const [currentId, setCurrentId] = useState(null);
     const [title, setTitle] = useState('');
-    const [isUploading, setIsUploading] = useState(false); // 업로드 상태 관리
+    const [isUploading, setIsUploading] = useState(false);
 
-    // [핵심] 이미지를 문자열(Base64)로 변환하는 함수
     const uploadImage = (file) => {
         return new Promise((resolve, reject) => {
             if (!file) { reject(null); return; }
 
-            // 800KB 제한 (Firestore 용량 보호)
             if (file.size > 800 * 1024) {
                 alert("이미지가 너무 큽니다! (800KB 이하만 가능)");
                 setIsUploading(false);
@@ -158,11 +155,15 @@ const TiptapEditor = () => {
             Color.configure({ types: ['textStyle'] }),
             Highlight,
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
-            Image, // [필수] 이미지 기능 등록
+            Image,
+            
+            // [추가됨] SlashCommand 확장 연결
+            SlashCommand.configure({
+                suggestion: suggestionOptions,
+            }),
         ],
         content: `<p>로딩중...</p>`,
         
-        // [핵심] 드래그 앤 드롭 감지
         editorProps: {
             handleDrop: (view, event, slice, moved) => {
                 if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]) {
@@ -179,7 +180,7 @@ const TiptapEditor = () => {
                                 ));
                             }
                         });
-                        return true; // 기본 동작 막기
+                        return true; 
                     }
                 }
                 return false;
@@ -192,7 +193,6 @@ const TiptapEditor = () => {
         },
     });
 
-    // 2. Firebase에서 글 목록 가져오기
     const fetchDocuments = async () => {
         try {
             const q = query(collection(db, "posts"), orderBy("updatedAt", "desc"));
@@ -208,7 +208,6 @@ const TiptapEditor = () => {
 
     useEffect(() => { fetchDocuments(); }, []);
 
-    // 에디터 로드 시 내용 복구
     useEffect(() => {
         if (!editor) return;
         const saved = localStorage.getItem(AUTOSAVE_KEY);
@@ -216,13 +215,13 @@ const TiptapEditor = () => {
             try { editor.commands.setContent(JSON.parse(saved)); } catch (e) { console.warn(e); }
         } else {
             editor.commands.setContent(`
-                <h2 style="text-align:center;">이미지를 드래그해보세요! 📸</h2>
-                <p>이제 별도의 서버 설정 없이 이미지가 저장됩니다.</p>
+                <h2 style="text-align:center;">Tiptap 에디터입니다 📝</h2>
+                <p>1. <b>'/' (슬래시)</b>를 입력해서 메뉴를 띄워보세요!</p>
+                <p>2. 이미지를 이곳으로 <b>드래그 앤 드롭</b> 해보세요.</p>
             `);
         }
     }, [editor]);
 
-    // 3. Firebase 저장 핸들러
     const handleSave = async () => {
         if (!editor) return;
         if (!title.trim()) { alert("제목을 꼭 입력해주세요!"); return; }
