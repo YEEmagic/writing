@@ -7,9 +7,10 @@ import FontFamily from '@tiptap/extension-font-family';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import TextAlign from '@tiptap/extension-text-align';
+import Image from '@tiptap/extension-image'; // [필수] 이미지 확장 기능 import
 
-// [변경됨] 1. Firebase 관련 모듈 import
-import { db } from './firebase'; // 1단계에서 만든 firebase.js 파일 경로
+// Firebase 관련 (Storage는 필요 없음)
+import { db } from './firebase'; 
 import { collection, addDoc, updateDoc, getDocs, doc, query, orderBy } from "firebase/firestore";
 
 const MenuBar = ({ editor }) => {
@@ -93,6 +94,17 @@ const MenuBar = ({ editor }) => {
             <button onClick={() => editor.chain().focus().setTextAlign('left').run()} style={editor.isActive({ textAlign: 'left' }) ? activeButtonStyle : buttonStyle}>Left</button>
             <button onClick={() => editor.chain().focus().setTextAlign('center').run()} style={editor.isActive({ textAlign: 'center' }) ? activeButtonStyle : buttonStyle}>Center</button>
             <button onClick={() => editor.chain().focus().setTextAlign('right').run()} style={editor.isActive({ textAlign: 'right' }) ? activeButtonStyle : buttonStyle}>Right</button>
+            
+            {/* 이미지 URL 수동 추가 버튼 (보조용) */}
+            <button 
+                onClick={() => {
+                    const url = window.prompt('이미지 주소(URL)를 입력하세요');
+                    if (url) editor.chain().focus().setImage({ src: url }).run();
+                }}
+                style={{ ...buttonStyle, fontWeight: 'bold' }}
+            >
+                📷 이미지
+            </button>
         </div>
     );
 };
@@ -103,118 +115,142 @@ const TiptapEditor = () => {
     const [documents, setDocuments] = useState([]);
     const [currentId, setCurrentId] = useState(null);
     const [title, setTitle] = useState('');
+    const [isUploading, setIsUploading] = useState(false); // 업로드 상태 관리
+
+    // [핵심] 이미지를 문자열(Base64)로 변환하는 함수
+    const uploadImage = (file) => {
+        return new Promise((resolve, reject) => {
+            if (!file) { reject(null); return; }
+
+            // 800KB 제한 (Firestore 용량 보호)
+            if (file.size > 800 * 1024) {
+                alert("이미지가 너무 큽니다! (800KB 이하만 가능)");
+                setIsUploading(false);
+                reject(null);
+                return;
+            }
+
+            setIsUploading(true);
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                const base64String = e.target.result;
+                setIsUploading(false);
+                resolve(base64String);
+            };
+
+            reader.onerror = (error) => {
+                console.error("변환 실패:", error);
+                setIsUploading(false);
+                reject(null);
+            };
+
+            reader.readAsDataURL(file);
+        });
+    };
 
     const editor = useEditor({
         extensions: [
-            StarterKit.configure({
-                heading: { levels: [1, 2, 3] },
-            }),
+            StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
             Underline,
             TextStyle,
-            FontFamily.configure({
-                types: ['textStyle'],
-            }),
+            FontFamily.configure({ types: ['textStyle'] }),
             Color.configure({ types: ['textStyle'] }),
             Highlight,
-            TextAlign.configure({
-                types: ['heading', 'paragraph'],
-            }),
+            TextAlign.configure({ types: ['heading', 'paragraph'] }),
+            Image, // [필수] 이미지 기능 등록
         ],
         content: `<p>로딩중...</p>`,
+        
+        // [핵심] 드래그 앤 드롭 감지
+        editorProps: {
+            handleDrop: (view, event, slice, moved) => {
+                if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]) {
+                    const file = event.dataTransfer.files[0];
+                    
+                    if (file.type.startsWith('image/')) {
+                        uploadImage(file).then((url) => {
+                            if (url) {
+                                const { schema } = view.state;
+                                const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
+                                view.dispatch(view.state.tr.insert(
+                                    coordinates ? coordinates.pos : view.state.selection.from,
+                                    schema.nodes.image.create({ src: url })
+                                ));
+                            }
+                        });
+                        return true; // 기본 동작 막기
+                    }
+                }
+                return false;
+            }
+        },
+
         onUpdate: ({ editor }) => {
             const content = editor.getJSON();
-            // [유지] 타이핑 중에는 로컬 스토리지에 임시 저장 (UX 보호용)
             localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(content));
         },
     });
 
-    // [추가됨] 2. Firebase에서 글 목록 가져오는 함수
+    // 2. Firebase에서 글 목록 가져오기
     const fetchDocuments = async () => {
         try {
-            // 'posts' 컬렉션에서 날짜 최신순으로 가져오기
             const q = query(collection(db, "posts"), orderBy("updatedAt", "desc"));
             const querySnapshot = await getDocs(q);
-            
             const docs = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
+                id: doc.id, ...doc.data()
             }));
             setDocuments(docs);
         } catch (e) {
-            console.error("Firebase 데이터 로드 실패:", e);
+            console.error("데이터 로드 실패:", e);
         }
     };
 
-    // 컴포넌트 처음 켜질 때 목록 불러오기
-    useEffect(() => {
-        fetchDocuments();
-    }, []);
+    useEffect(() => { fetchDocuments(); }, []);
 
-    // 에디터 로드 완료 시 로컬 임시저장본 혹은 기본 멘트 띄우기
+    // 에디터 로드 시 내용 복구
     useEffect(() => {
         if (!editor) return;
-        
-        // 만약 임시 저장된 게 있다면 불러오기 (새로고침 대비)
         const saved = localStorage.getItem(AUTOSAVE_KEY);
         if (saved) {
-            try {
-                editor.commands.setContent(JSON.parse(saved));
-            } catch (e) {
-                console.warn(e);
-            }
+            try { editor.commands.setContent(JSON.parse(saved)); } catch (e) { console.warn(e); }
         } else {
-            // 없으면 기본 환영 메시지
             editor.commands.setContent(`
-                <h2 style="text-align:center;">안녕하세요! Firebase 연동 에디터입니다.</h2>
-                <p>이제 '저장' 버튼을 누르면 서버에 영구 저장됩니다.</p>
+                <h2 style="text-align:center;">이미지를 드래그해보세요! 📸</h2>
+                <p>이제 별도의 서버 설정 없이 이미지가 저장됩니다.</p>
             `);
         }
     }, [editor]);
 
-
-    // [추가됨] 3. Firebase 저장 핸들러
+    // 3. Firebase 저장 핸들러
     const handleSave = async () => {
         if (!editor) return;
-        if (!title.trim()) {
-            alert("제목을 꼭 입력해주세요!");
-            return;
-        }
+        if (!title.trim()) { alert("제목을 꼭 입력해주세요!"); return; }
 
-        const content = editor.getJSON(); // 에디터 내용을 JSON으로 추출
+        const content = editor.getJSON();
         const now = new Date().toISOString();
 
         try {
             if (currentId) {
-                // [수정] 이미 저장된 글이면 -> 내용만 업데이트 (Update)
-                const docRef = doc(db, "posts", currentId);
-                await updateDoc(docRef, {
-                    title: title,
-                    content: content,
-                    updatedAt: now
+                await updateDoc(doc(db, "posts", currentId), {
+                    title: title, content: content, updatedAt: now
                 });
                 alert('수정되었습니다! ✅');
             } else {
-                // [신규] 새로운 글이면 -> 새로 만들기 (Create)
                 const docRef = await addDoc(collection(db, "posts"), {
-                    title: title,
-                    content: content,
-                    createdAt: now,
-                    updatedAt: now
+                    title: title, content: content, createdAt: now, updatedAt: now
                 });
-                setCurrentId(docRef.id); // 현재 작업 중인 ID 설정
+                setCurrentId(docRef.id);
                 alert('새로 저장되었습니다! 🎉');
             }
-            
-            fetchDocuments(); // 목록 새로고침
-            localStorage.removeItem(AUTOSAVE_KEY); // 저장했으니 임시본은 삭제
-            
+            fetchDocuments();
+            localStorage.removeItem(AUTOSAVE_KEY);
         } catch (e) {
             console.error("저장 에러:", e);
-            alert("저장에 실패했습니다. 권한 설정을 확인해보세요.");
+            alert("저장 실패 (혹시 이미지가 너무 큰가요? 1MB 이하만 가능)");
         }
     };
 
-    // [추가됨] 4. 새 글 쓰기
     const handleNew = () => {
         setCurrentId(null);
         setTitle('');
@@ -223,15 +259,10 @@ const TiptapEditor = () => {
         localStorage.removeItem(AUTOSAVE_KEY);
     };
 
-    // [추가됨] 5. 목록에서 글 불러오기
     const handleLoad = (doc) => {
         setCurrentId(doc.id);
         setTitle(doc.title);
-        
-        // Tiptap의 강력한 기능: JSON을 넣으면 알아서 HTML로 렌더링해줌
         editor?.commands.setContent(doc.content);
-        
-        // 불러온 내용으로 임시저장소도 업데이트
         localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(doc.content));
     };
 
@@ -240,8 +271,8 @@ const TiptapEditor = () => {
             <div style={{ width: '280px', border: '1px solid #ccc', borderRadius: '8px', padding: '16px', height: 'fit-content' }}>
                 <h3 style={{ marginTop: 0 }}>📚 서버 저장 목록</h3>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                    <button style={{ ...{ flex: 1, padding: '6px 8px', cursor: 'pointer', borderRadius: '4px' }, border: '1px solid #ddd' }} onClick={handleNew}>새 글</button>
-                    <button style={{ ...{ flex: 1, padding: '6px 8px', cursor: 'pointer', borderRadius: '4px', backgroundColor: '#333', color: '#fff' }, border: '1px solid #333' }} onClick={handleSave}>저장</button>
+                    <button style={{ flex: 1, padding: '6px 8px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd' }} onClick={handleNew}>새 글</button>
+                    <button style={{ flex: 1, padding: '6px 8px', cursor: 'pointer', borderRadius: '4px', backgroundColor: '#333', color: '#fff', border: '1px solid #333' }} onClick={handleSave}>저장</button>
                 </div>
                 <input
                     type="text"
@@ -275,7 +306,10 @@ const TiptapEditor = () => {
             </div>
 
             <div className="editor-section" style={{ border: '1px solid #ccc', padding: '20px', borderRadius: '8px', minHeight: '400px', flex: 1 }}>
-                <h3 style={{ marginTop: 0 }}>📝 Editor (Firebase)</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ marginTop: 0 }}>📝 Editor (Firebase)</h3>
+                    {isUploading && <span style={{ color: 'blue', fontWeight: 'bold' }}>이미지 처리 중... ⏳</span>}
+                </div>
                 <MenuBar editor={editor} />
                 <div style={{ minHeight: '300px', border: '1px solid #eee', padding: '10px', borderRadius: '4px' }}>
                     <EditorContent editor={editor} />
