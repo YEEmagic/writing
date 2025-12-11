@@ -4,7 +4,7 @@ import './App.css';
 function App() {
   return (
     <div className="App">
-      <h1>Tiptap Web Editor</h1>
+      <h1>웹 에디터 프로젝트!</h1>
       <TiptapEditor />
     </div>
   );

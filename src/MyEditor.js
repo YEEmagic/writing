@@ -269,7 +269,7 @@ const TiptapEditor = () => {
     return (
         <div className="app-container" style={{ padding: '40px', maxWidth: '1100px', margin: '0 auto', display: 'flex', gap: '16px' }}>
             <div style={{ width: '280px', border: '1px solid #ccc', borderRadius: '8px', padding: '16px', height: 'fit-content' }}>
-                <h3 style={{ marginTop: 0 }}>📚 서버 저장 목록</h3>
+                <h3 style={{ marginTop: 0 }}>📚 글 목록</h3>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                     <button style={{ flex: 1, padding: '6px 8px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ddd' }} onClick={handleNew}>새 글</button>
                     <button style={{ flex: 1, padding: '6px 8px', cursor: 'pointer', borderRadius: '4px', backgroundColor: '#333', color: '#fff', border: '1px solid #333' }} onClick={handleSave}>저장</button>
@@ -307,7 +307,7 @@ const TiptapEditor = () => {
 
             <div className="editor-section" style={{ border: '1px solid #ccc', padding: '20px', borderRadius: '8px', minHeight: '400px', flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ marginTop: 0 }}>📝 Editor (Firebase)</h3>
+                    <h3 style={{ marginTop: 0 }}>📝 에디터</h3>
                     {isUploading && <span style={{ color: 'blue', fontWeight: 'bold' }}>이미지 처리 중... ⏳</span>}
                 </div>
                 <MenuBar editor={editor} />
